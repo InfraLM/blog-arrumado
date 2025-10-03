@@ -20,8 +20,7 @@
     },
     "files": [
       "**/*",
-      "!node_modules/**/*",
-      "node_modules/sqlite3/**/*"
+      "!node_modules/**/*"
     ],
     "win": {
       "target": [
@@ -74,8 +73,5 @@
   "devDependencies": {
     "electron": "^27.0.0",
     "electron-builder": "^24.6.4"
-  },
-  "dependencies": {
-    "sqlite3": "^5.1.6"
   }
 }

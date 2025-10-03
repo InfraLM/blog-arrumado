@@ -2,22 +2,11 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-// Configuração do banco de dados local
-const Database = require('sqlite3').Database;
-let db;
-
 // Janela principal
 let mainWindow;
 
-// Configuração do banco PostgreSQL (para quando disponível)
-const pgConfig = {
-  host: '35.199.101.38',
-  port: 5432,
-  database: 'liberdade-medica',
-  user: 'vinilean',
-  password: '-Infra55LM-',
-  ssl: { rejectUnauthorized: false }
-};
+// Arquivo de dados local
+let dataFile;
 
 function createWindow() {
   // Criar janela principal
@@ -64,41 +53,45 @@ function createWindow() {
   });
 }
 
-// Inicializar banco de dados local
-function initDatabase() {
-  const dbPath = path.join(app.getPath('userData'), 'artigos.db');
+// Inicializar arquivo de dados
+function initDataFile() {
+  const userDataPath = app.getPath('userData');
+  dataFile = path.join(userDataPath, 'artigos.json');
   
-  db = new Database(dbPath, (err) => {
-    if (err) {
-      console.error('Erro ao abrir banco local:', err);
-      return;
-    }
-    
-    console.log('✅ Banco de dados local conectado');
-    
-    // Criar tabela se não existir
-    db.run(`
-      CREATE TABLE IF NOT EXISTS artigos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        titulo TEXT NOT NULL,
-        slug TEXT UNIQUE NOT NULL,
-        categoria TEXT NOT NULL,
-        autor TEXT NOT NULL,
-        data_criacao TEXT NOT NULL,
-        data_atualizacao TEXT NOT NULL,
-        content TEXT NOT NULL,
-        status TEXT DEFAULT 'publicado',
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    `, (err) => {
-      if (err) {
-        console.error('Erro ao criar tabela:', err);
-      } else {
-        console.log('✅ Tabela artigos pronta');
-      }
-    });
-  });
+  // Criar arquivo se não existir
+  if (!fs.existsSync(dataFile)) {
+    const initialData = {
+      artigos: [],
+      lastId: 0,
+      created: new Date().toISOString()
+    };
+    fs.writeFileSync(dataFile, JSON.stringify(initialData, null, 2));
+    console.log('✅ Arquivo de dados criado:', dataFile);
+  } else {
+    console.log('✅ Arquivo de dados encontrado:', dataFile);
+  }
+}
+
+// Ler dados do arquivo
+function readData() {
+  try {
+    const data = fs.readFileSync(dataFile, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Erro ao ler dados:', error);
+    return { artigos: [], lastId: 0 };
+  }
+}
+
+// Salvar dados no arquivo
+function saveData(data) {
+  try {
+    fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
+    return true;
+  } catch (error) {
+    console.error('Erro ao salvar dados:', error);
+    return false;
+  }
 }
 
 // Função para gerar slug
@@ -114,66 +107,65 @@ function generateSlug(titulo) {
 
 // Função para garantir slug único
 function ensureUniqueSlug(baseSlug, excludeId = null) {
-  return new Promise((resolve) => {
-    let slug = baseSlug;
-    let counter = 1;
+  const data = readData();
+  let slug = baseSlug;
+  let counter = 1;
+  
+  while (true) {
+    const exists = data.artigos.find(article => 
+      article.slug === slug && article.id !== excludeId
+    );
     
-    function checkSlug() {
-      const query = excludeId 
-        ? 'SELECT id FROM artigos WHERE slug = ? AND id != ?'
-        : 'SELECT id FROM artigos WHERE slug = ?';
-      const params = excludeId ? [slug, excludeId] : [slug];
-      
-      db.get(query, params, (err, row) => {
-        if (err) {
-          console.error('Erro ao verificar slug:', err);
-          resolve(baseSlug);
-          return;
-        }
-        
-        if (!row) {
-          resolve(slug);
-        } else {
-          slug = `${baseSlug}_${counter}`;
-          counter++;
-          checkSlug();
-        }
-      });
+    if (!exists) {
+      return slug;
     }
     
-    checkSlug();
-  });
+    slug = `${baseSlug}_${counter}`;
+    counter++;
+  }
 }
 
 // IPC Handlers
 
 // Testar conexão
 ipcMain.handle('test-connection', async () => {
-  // Sempre retorna sucesso para modo local
   return {
     success: true,
-    message: '✅ Modo desktop ativo - dados salvos localmente',
+    message: '✅ Aplicativo desktop ativo - dados salvos localmente',
     mode: 'desktop'
   };
 });
 
 // Listar artigos
 ipcMain.handle('list-articles', async () => {
-  return new Promise((resolve) => {
-    db.all(`
-      SELECT id, titulo, categoria, autor, data_criacao, status, slug
-      FROM artigos 
-      ORDER BY created_at DESC 
-      LIMIT 20
-    `, (err, rows) => {
-      if (err) {
-        console.error('Erro ao listar artigos:', err);
-        resolve({ success: false, message: err.message, articles: [] });
-      } else {
-        resolve({ success: true, articles: rows, mode: 'desktop' });
-      }
-    });
-  });
+  try {
+    const data = readData();
+    const articles = data.artigos
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 20)
+      .map(article => ({
+        id: article.id,
+        titulo: article.titulo,
+        categoria: article.categoria,
+        autor: article.autor,
+        data_criacao: article.data_criacao,
+        status: article.status,
+        slug: article.slug
+      }));
+    
+    return { 
+      success: true, 
+      articles: articles, 
+      mode: 'desktop',
+      total: data.artigos.length
+    };
+  } catch (error) {
+    return { 
+      success: false, 
+      message: error.message, 
+      articles: [] 
+    };
+  }
 });
 
 // Criar artigo
@@ -186,45 +178,42 @@ ipcMain.handle('create-article', async (event, articleData) => {
   }
 
   try {
+    const data = readData();
     const slug = generateSlug(titulo);
-    const finalSlug = await ensureUniqueSlug(slug);
+    const finalSlug = ensureUniqueSlug(slug);
     const now = new Date();
-
-    return new Promise((resolve) => {
-      const query = `
-        INSERT INTO artigos 
-        (titulo, slug, categoria, autor, data_criacao, data_atualizacao, content, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `;
-      
-      const values = [
-        titulo,
-        finalSlug,
-        categoria,
-        autor,
-        now.toISOString().split('T')[0],
-        now.toISOString().split('T')[0],
-        content,
-        'publicado',
-        now.toISOString(),
-        now.toISOString()
-      ];
-
-      db.run(query, values, function(err) {
-        if (err) {
-          console.error('Erro ao criar artigo:', err);
-          resolve({ success: false, message: err.message });
-        } else {
-          resolve({
-            success: true,
-            id: this.lastID,
-            slug: finalSlug,
-            message: 'Artigo salvo com sucesso!',
-            mode: 'desktop'
-          });
-        }
-      });
-    });
+    
+    // Criar novo artigo
+    const newArticle = {
+      id: data.lastId + 1,
+      titulo: titulo,
+      slug: finalSlug,
+      categoria: categoria,
+      autor: autor,
+      data_criacao: now.toISOString().split('T')[0],
+      data_atualizacao: now.toISOString().split('T')[0],
+      content: content,
+      status: 'publicado',
+      created_at: now.toISOString(),
+      updated_at: now.toISOString()
+    };
+    
+    // Adicionar ao array
+    data.artigos.push(newArticle);
+    data.lastId = newArticle.id;
+    
+    // Salvar
+    if (saveData(data)) {
+      return {
+        success: true,
+        id: newArticle.id,
+        slug: finalSlug,
+        message: 'Artigo salvo com sucesso!',
+        mode: 'desktop'
+      };
+    } else {
+      return { success: false, message: 'Erro ao salvar no arquivo' };
+    }
   } catch (error) {
     return { success: false, message: error.message };
   }
@@ -242,7 +231,13 @@ ipcMain.handle('save-draft', async (event, draftData) => {
     });
 
     if (!result.canceled) {
-      fs.writeFileSync(result.filePath, JSON.stringify(draftData, null, 2));
+      const draftWithTimestamp = {
+        ...draftData,
+        timestamp: new Date().toISOString(),
+        version: '1.0'
+      };
+      
+      fs.writeFileSync(result.filePath, JSON.stringify(draftWithTimestamp, null, 2));
       return { success: true, message: 'Rascunho salvo com sucesso!' };
     }
     
@@ -271,7 +266,7 @@ ipcMain.handle('load-draft', async () => {
     
     return { success: false, message: 'Carregamento cancelado' };
   } catch (error) {
-    return { success: false, message: error.message };
+    return { success: false, message: 'Erro ao carregar rascunho: ' + error.message };
   }
 });
 
@@ -297,9 +292,32 @@ ipcMain.handle('export-html', async (event, htmlData) => {
   }
 });
 
+// Backup dos dados
+ipcMain.handle('backup-data', async () => {
+  try {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Backup dos Artigos',
+      defaultPath: `backup-artigos-${new Date().toISOString().split('T')[0]}.json`,
+      filters: [
+        { name: 'Arquivos JSON', extensions: ['json'] }
+      ]
+    });
+
+    if (!result.canceled) {
+      const data = readData();
+      fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2));
+      return { success: true, message: 'Backup criado com sucesso!' };
+    }
+    
+    return { success: false, message: 'Backup cancelado' };
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
+});
+
 // Eventos do app
 app.whenReady().then(() => {
-  initDatabase();
+  initDataFile();
   createWindow();
 
   app.on('activate', () => {
@@ -311,15 +329,15 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    if (db) {
-      db.close();
-    }
     app.quit();
   }
 });
 
-app.on('before-quit', () => {
-  if (db) {
-    db.close();
-  }
-});
+// Log de inicialização
+console.log('========================================');
+console.log(' EDITOR DE ARTIGOS - DESKTOP');
+console.log(' Blog Liberdade Médica');
+console.log('========================================');
+console.log('✅ Aplicativo iniciado');
+console.log('📁 Dados salvos em:', app.getPath('userData'));
+console.log('========================================');
