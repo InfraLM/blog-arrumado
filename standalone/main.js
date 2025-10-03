@@ -5,8 +5,26 @@ const fs = require('fs');
 // Janela principal
 let mainWindow;
 
-// Arquivo de dados local
+// Arquivo de dados local (fallback)
 let dataFile;
+
+// Cliente PostgreSQL
+let pgClient = null;
+let connectionStatus = 'disconnected';
+
+// Configuração do banco PostgreSQL
+const dbConfig = {
+  host: '35.199.101.38',
+  port: 5432,
+  database: 'liberdade-medica',
+  user: 'vinilean',
+  password: '-Infra55LM-',
+  ssl: false,
+  connectionTimeoutMillis: 5000,
+  query_timeout: 10000,
+  statement_timeout: 10000,
+  idle_in_transaction_session_timeout: 10000
+};
 
 function createWindow() {
   // Criar janela principal
@@ -50,10 +68,37 @@ function createWindow() {
   // Evento de fechar
   mainWindow.on('closed', () => {
     mainWindow = null;
+    if (pgClient) {
+      pgClient.end();
+    }
   });
 }
 
-// Inicializar arquivo de dados
+// Inicializar conexão PostgreSQL
+async function initPostgreSQL() {
+  try {
+    const { Client } = require('pg');
+    pgClient = new Client(dbConfig);
+    
+    console.log('🔄 Tentando conectar ao PostgreSQL...');
+    await pgClient.connect();
+    
+    // Testar conexão
+    const result = await pgClient.query('SELECT NOW() as current_time');
+    console.log('✅ PostgreSQL conectado:', result.rows[0].current_time);
+    
+    connectionStatus = 'connected';
+    return true;
+  } catch (error) {
+    console.log('❌ Erro ao conectar PostgreSQL:', error.message);
+    console.log('📁 Usando modo offline (JSON local)');
+    connectionStatus = 'offline';
+    pgClient = null;
+    return false;
+  }
+}
+
+// Inicializar arquivo de dados local (fallback)
 function initDataFile() {
   const userDataPath = app.getPath('userData');
   dataFile = path.join(userDataPath, 'artigos.json');
@@ -66,30 +111,30 @@ function initDataFile() {
       created: new Date().toISOString()
     };
     fs.writeFileSync(dataFile, JSON.stringify(initialData, null, 2));
-    console.log('✅ Arquivo de dados criado:', dataFile);
+    console.log('✅ Arquivo de dados local criado:', dataFile);
   } else {
-    console.log('✅ Arquivo de dados encontrado:', dataFile);
+    console.log('✅ Arquivo de dados local encontrado:', dataFile);
   }
 }
 
-// Ler dados do arquivo
-function readData() {
+// Ler dados do arquivo local
+function readLocalData() {
   try {
     const data = fs.readFileSync(dataFile, 'utf8');
     return JSON.parse(data);
   } catch (error) {
-    console.error('Erro ao ler dados:', error);
+    console.error('Erro ao ler dados locais:', error);
     return { artigos: [], lastId: 0 };
   }
 }
 
-// Salvar dados no arquivo
-function saveData(data) {
+// Salvar dados no arquivo local
+function saveLocalData(data) {
   try {
     fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
     return true;
   } catch (error) {
-    console.error('Erro ao salvar dados:', error);
+    console.error('Erro ao salvar dados locais:', error);
     return false;
   }
 }
@@ -105,9 +150,38 @@ function generateSlug(titulo) {
     .replace(/^_+|_+$/g, '');
 }
 
-// Função para garantir slug único
-function ensureUniqueSlug(baseSlug, excludeId = null) {
-  const data = readData();
+// Função para garantir slug único (PostgreSQL)
+async function ensureUniqueSlugPG(baseSlug, excludeId = null) {
+  if (!pgClient) return baseSlug;
+  
+  try {
+    let slug = baseSlug;
+    let counter = 1;
+    
+    while (true) {
+      const query = excludeId 
+        ? 'SELECT id FROM public.blog_artigos WHERE slug = $1 AND id != $2'
+        : 'SELECT id FROM public.blog_artigos WHERE slug = $1';
+      
+      const params = excludeId ? [slug, excludeId] : [slug];
+      const result = await pgClient.query(query, params);
+      
+      if (result.rows.length === 0) {
+        return slug;
+      }
+      
+      slug = `${baseSlug}_${counter}`;
+      counter++;
+    }
+  } catch (error) {
+    console.error('Erro ao verificar slug único:', error);
+    return baseSlug;
+  }
+}
+
+// Função para garantir slug único (Local)
+function ensureUniqueSlugLocal(baseSlug, excludeId = null) {
+  const data = readLocalData();
   let slug = baseSlug;
   let counter = 1;
   
@@ -129,17 +203,71 @@ function ensureUniqueSlug(baseSlug, excludeId = null) {
 
 // Testar conexão
 ipcMain.handle('test-connection', async () => {
-  return {
-    success: true,
-    message: '✅ Aplicativo desktop ativo - dados salvos localmente',
-    mode: 'desktop'
-  };
+  if (connectionStatus === 'connected') {
+    try {
+      await pgClient.query('SELECT 1');
+      return {
+        success: true,
+        message: '✅ PostgreSQL conectado - dados salvos no banco',
+        mode: 'postgresql',
+        status: 'connected'
+      };
+    } catch (error) {
+      connectionStatus = 'offline';
+      return {
+        success: true,
+        message: '⚠️ PostgreSQL desconectado - usando modo offline',
+        mode: 'local',
+        status: 'offline'
+      };
+    }
+  } else {
+    return {
+      success: true,
+      message: '📁 Modo offline ativo - dados salvos localmente',
+      mode: 'local',
+      status: 'offline'
+    };
+  }
 });
 
 // Listar artigos
 ipcMain.handle('list-articles', async () => {
   try {
-    const data = readData();
+    if (pgClient && connectionStatus === 'connected') {
+      // Tentar buscar do PostgreSQL
+      try {
+        const result = await pgClient.query(`
+          SELECT id, titulo, categoria, autor, data_criacao, status, slug, created_at
+          FROM public.blog_artigos 
+          ORDER BY created_at DESC 
+          LIMIT 20
+        `);
+        
+        const articles = result.rows.map(row => ({
+          id: row.id,
+          titulo: row.titulo,
+          categoria: row.categoria,
+          autor: row.autor,
+          data_criacao: row.data_criacao,
+          status: row.status,
+          slug: row.slug
+        }));
+        
+        return { 
+          success: true, 
+          articles: articles, 
+          mode: 'postgresql',
+          total: result.rows.length
+        };
+      } catch (error) {
+        console.error('Erro ao buscar artigos PostgreSQL:', error);
+        connectionStatus = 'offline';
+      }
+    }
+    
+    // Fallback para dados locais
+    const data = readLocalData();
     const articles = data.artigos
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       .slice(0, 20)
@@ -156,7 +284,7 @@ ipcMain.handle('list-articles', async () => {
     return { 
       success: true, 
       articles: articles, 
-      mode: 'desktop',
+      mode: 'local',
       total: data.artigos.length
     };
   } catch (error) {
@@ -178,12 +306,56 @@ ipcMain.handle('create-article', async (event, articleData) => {
   }
 
   try {
-    const data = readData();
     const slug = generateSlug(titulo);
-    const finalSlug = ensureUniqueSlug(slug);
     const now = new Date();
     
-    // Criar novo artigo
+    // Tentar salvar no PostgreSQL primeiro
+    if (pgClient && connectionStatus === 'connected') {
+      try {
+        const finalSlug = await ensureUniqueSlugPG(slug);
+        
+        const insertQuery = `
+          INSERT INTO public.blog_artigos 
+          (titulo, slug, categoria, autor, data_criacao, data_atualizacao, content, status, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          RETURNING id
+        `;
+        
+        const values = [
+          titulo,
+          finalSlug,
+          categoria,
+          autor,
+          now.toISOString().split('T')[0],
+          now.toISOString().split('T')[0],
+          content,
+          'publicado',
+          now.toISOString(),
+          now.toISOString()
+        ];
+        
+        const result = await pgClient.query(insertQuery, values);
+        
+        console.log('✅ Artigo salvo no PostgreSQL:', result.rows[0].id);
+        
+        return {
+          success: true,
+          id: result.rows[0].id,
+          slug: finalSlug,
+          message: '✅ Artigo publicado no blog com sucesso!',
+          mode: 'postgresql'
+        };
+      } catch (error) {
+        console.error('Erro ao salvar no PostgreSQL:', error);
+        connectionStatus = 'offline';
+        // Continuar para salvar localmente
+      }
+    }
+    
+    // Fallback para dados locais
+    const data = readLocalData();
+    const finalSlug = ensureUniqueSlugLocal(slug);
+    
     const newArticle = {
       id: data.lastId + 1,
       titulo: titulo,
@@ -198,21 +370,20 @@ ipcMain.handle('create-article', async (event, articleData) => {
       updated_at: now.toISOString()
     };
     
-    // Adicionar ao array
     data.artigos.push(newArticle);
     data.lastId = newArticle.id;
     
-    // Salvar
-    if (saveData(data)) {
+    if (saveLocalData(data)) {
+      console.log('📁 Artigo salvo localmente:', newArticle.id);
       return {
         success: true,
         id: newArticle.id,
         slug: finalSlug,
-        message: 'Artigo salvo com sucesso!',
-        mode: 'desktop'
+        message: '📁 Artigo salvo localmente (modo offline)',
+        mode: 'local'
       };
     } else {
-      return { success: false, message: 'Erro ao salvar no arquivo' };
+      return { success: false, message: 'Erro ao salvar dados' };
     }
   } catch (error) {
     return { success: false, message: error.message };
@@ -304,7 +475,27 @@ ipcMain.handle('backup-data', async () => {
     });
 
     if (!result.canceled) {
-      const data = readData();
+      let data;
+      
+      if (pgClient && connectionStatus === 'connected') {
+        // Backup do PostgreSQL
+        try {
+          const result = await pgClient.query('SELECT * FROM public.blog_artigos ORDER BY created_at DESC');
+          data = {
+            source: 'postgresql',
+            timestamp: new Date().toISOString(),
+            artigos: result.rows
+          };
+        } catch (error) {
+          data = readLocalData();
+          data.source = 'local';
+        }
+      } else {
+        // Backup local
+        data = readLocalData();
+        data.source = 'local';
+      }
+      
       fs.writeFileSync(result.filePath, JSON.stringify(data, null, 2));
       return { success: true, message: 'Backup criado com sucesso!' };
     }
@@ -316,8 +507,9 @@ ipcMain.handle('backup-data', async () => {
 });
 
 // Eventos do app
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   initDataFile();
+  await initPostgreSQL();
   createWindow();
 
   app.on('activate', () => {
@@ -328,6 +520,9 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  if (pgClient) {
+    pgClient.end();
+  }
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -337,7 +532,9 @@ app.on('window-all-closed', () => {
 console.log('========================================');
 console.log(' EDITOR DE ARTIGOS - DESKTOP');
 console.log(' Blog Liberdade Médica');
+console.log(' Versão com PostgreSQL + Fallback');
 console.log('========================================');
 console.log('✅ Aplicativo iniciado');
-console.log('📁 Dados salvos em:', app.getPath('userData'));
+console.log('📁 Dados locais em:', app.getPath('userData'));
+console.log('🔗 PostgreSQL:', dbConfig.host + ':' + dbConfig.port);
 console.log('========================================');

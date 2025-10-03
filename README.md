@@ -1,34 +1,57 @@
 # Editor de Artigos - Blog Liberdade Médica
 
-Sistema completo para criação de artigos do blog, com interface moderna e conexão direta ao PostgreSQL.
+Sistema completo para criação de artigos do blog, com **duas versões**: web e desktop standalone.
 
-## 🎯 Características
+## 🎯 Versões Disponíveis
 
-### ✅ **Arquitetura Simples e Robusta**
-- **Backend**: Node.js + Express (sem frameworks complexos)
-- **Frontend**: HTML + CSS + JavaScript puro (sem React)
-- **Banco**: PostgreSQL com fallback local automático
-- **Build**: PKG para executáveis nativos
+### 🌐 **Versão Web** (Pasta raiz)
+- **Para desenvolvedores** que têm Node.js
+- Interface web no navegador
+- PostgreSQL + fallback local
+- Ideal para múltiplos usuários
 
-### ✅ **Funcionalidades Completas**
-- Criação de artigos com blocos modulares (H1-H6, Parágrafo)
-- Pré-visualização em tempo real
-- Reordenação de blocos (mover para cima/baixo)
-- Geração automática de slug
-- Exportação de HTML completo
-- Salvamento/carregamento de rascunhos
-- Lista de artigos publicados
-- Interface responsiva (desktop/tablet/mobile)
+### 💻 **Versão Desktop Standalone** (Pasta `standalone/`)
+- **Para redatores** sem conhecimento técnico
+- **NÃO precisa de Node.js**
+- Aplicativo desktop nativo
+- Janela própria (não abre navegador)
+- Banco SQLite local
+- **RECOMENDADO PARA O REDATOR**
 
-### ✅ **Conexão Inteligente**
-- Conecta automaticamente ao PostgreSQL quando disponível
-- Fallback local transparente (salva em JSON)
-- Status de conexão em tempo real
-- Migração automática entre modos
+## 🚀 Para o Redator (Versão Desktop)
 
-## 🚀 Instalação e Uso
+### **📥 Como Baixar e Usar:**
 
-### **Versão de Desenvolvimento**
+1. **Você gera o aplicativo:**
+   ```cmd
+   cd standalone
+   npm install
+   npm run build-win
+   ```
+
+2. **Envia para o redator:**
+   - `dist/EditorArtigos-Portable.exe` (arquivo único)
+
+3. **Redator usa:**
+   - Baixa o arquivo
+   - Duplo clique para executar
+   - Janela do aplicativo abre
+   - Interface idêntica à versão web
+   - Dados salvos localmente
+
+### **✅ Vantagens para o Redator:**
+- ❌ **Não precisa instalar Node.js**
+- ❌ **Não precisa configurar nada**
+- ✅ **Arquivo único executável**
+- ✅ **Aplicativo desktop nativo**
+- ✅ **Janela própria (não é navegador)**
+- ✅ **Funciona offline**
+- ✅ **Diálogos nativos** para salvar/abrir
+- ✅ **Interface idêntica**
+
+## 🔧 Para Desenvolvedores (Versão Web)
+
+### **Instalação e Uso:**
 
 ```bash
 # 1. Clone o repositório
@@ -45,7 +68,7 @@ npm start
 http://localhost:3000
 ```
 
-### **Versão Executável (Para Distribuição)**
+### **Gerar Executável:**
 
 ```bash
 # 1. Gere os arquivos de distribuição
@@ -53,136 +76,135 @@ npm run build
 
 # 2. Gere os executáveis
 npm run build-exe
-
-# 3. Distribua os arquivos gerados:
-# - EditorArtigos-Windows.exe (para Windows)
-# - EditorArtigos-Linux (para Linux)  
-# - EditorArtigos-macOS (para macOS)
 ```
 
-## 📋 Requisitos
+## 📊 Comparação das Versões
 
-### **Para Desenvolvimento:**
-- Node.js 18+ 
-- NPM ou Yarn
-- PostgreSQL (opcional - funciona sem)
+| Aspecto | Versão Web | Versão Desktop |
+|---------|------------|----------------|
+| **Público** | Desenvolvedores | Redatores |
+| **Instalação** | Precisa Node.js | ❌ Não precisa nada |
+| **Interface** | Navegador | ✅ Janela nativa |
+| **Dados** | PostgreSQL/JSON | ✅ SQLite local |
+| **Distribuição** | Complexa | ✅ Arquivo único |
+| **Offline** | Limitado | ✅ Completo |
+| **Simplicidade** | Média | ✅ Máxima |
 
-### **Para o Redator (Executável):**
-- ❌ **Nenhum requisito!**
-- Arquivo único executável
-- Funciona offline
-- Não precisa instalar nada
+## 🎯 Qual Versão Usar?
 
-## 🎯 Como Usar (Redator)
+### **🌐 Use a Versão Web quando:**
+- Você é desenvolvedor
+- Tem Node.js instalado
+- Quer conectar ao PostgreSQL
+- Precisa de múltiplos usuários
+- Tem infraestrutura de servidor
 
-### **1. Informações Básicas**
-- Preencha título, categoria e autor
-- 16 categorias médicas disponíveis
-
-### **2. Criação de Conteúdo**
-- Digite o conteúdo do bloco
-- Escolha o tipo (H1-H6 ou Parágrafo)
-- Clique "Adicionar Bloco" ou use Ctrl+Enter
-
-### **3. Organização**
-- Reordene blocos com botões ↑ ↓
-- Remova blocos desnecessários
-- Visualize em tempo real
-
-### **4. Finalização**
-- Confira na pré-visualização
-- Salve rascunho se necessário
-- Clique "Publicar Artigo"
-
-## 🔧 Configuração do Banco
-
-### **PostgreSQL (Produção)**
-```javascript
-// Configuração automática no código
-const dbConfig = {
-  host: '35.199.101.38',
-  port: 5432,
-  database: 'liberdade-medica',
-  user: 'vinilean',
-  password: '-Infra55LM-',
-  ssl: { rejectUnauthorized: false }
-};
-```
-
-### **Modo Local (Desenvolvimento/Offline)**
-- Artigos salvos em: `data/artigos.json`
-- Estrutura compatível com PostgreSQL
-- Migração automática quando conectar
+### **💻 Use a Versão Desktop quando:**
+- Redator não tem conhecimento técnico
+- Quer máxima simplicidade
+- Prefere aplicativo nativo
+- Não quer depender de servidor
+- Quer dados locais seguros
 
 ## 📁 Estrutura do Projeto
 
 ```
 blog-arrumado/
-├── backend/
-│   └── server.js          # Servidor Express
-├── frontend/
-│   ├── index.html         # Interface principal
-│   ├── styles.css         # Estilos responsivos
-│   └── app.js            # Lógica JavaScript
-├── scripts/
-│   ├── build.js          # Script de build
-│   └── build-exe.js      # Geração de executáveis
+├── backend/              # Servidor Express (versão web)
+├── frontend/             # Interface HTML/CSS/JS (versão web)
+├── standalone/           # Aplicativo desktop (versão standalone)
+│   ├── main.js          # Processo principal Electron
+│   ├── app.js           # Lógica desktop
+│   ├── build.js         # Script de build
+│   └── build-windows.bat # Build para Windows
+├── scripts/              # Scripts de build (versão web)
 ├── dist/                 # Arquivos de distribuição
-├── data/                 # Dados locais
-└── package.json          # Configurações
+└── TUTORIAL_VSCODE.md    # Tutorial detalhado
 ```
 
-## 🎊 Vantagens desta Versão
+## 🎊 Funcionalidades (Ambas as Versões)
 
-### **✅ Para Você (Desenvolvedor)**
-- Arquitetura simples e manutenível
-- Sem dependências complexas
-- Build confiável e reproduzível
-- Fácil debug e modificação
+### ✅ **Criação de Artigos**
+- Blocos modulares (H1-H6, Parágrafo)
+- Pré-visualização em tempo real
+- Reordenação de blocos (mover para cima/baixo)
+- Geração automática de slug
+- 16 categorias médicas especializadas
 
-### **✅ Para o Redator**
-- Interface familiar e intuitiva
-- Arquivo único executável
-- Funciona sem internet
-- Não precisa configurar nada
+### ✅ **Gerenciamento**
+- Salvamento/carregamento de rascunhos
+- Exportação de HTML completo
+- Lista de artigos publicados
+- Interface responsiva (desktop/tablet/mobile)
+- Validação completa de formulários
 
-### **✅ Para o Sistema**
-- Conecta ao PostgreSQL real
-- Fallback local automático
-- Dados sempre preservados
-- Migração transparente
+### ✅ **Dados**
+- **Versão Web**: PostgreSQL + fallback JSON
+- **Versão Desktop**: SQLite local
+- Estrutura compatível entre versões
+- Migração possível entre sistemas
 
-## 🔄 Comandos Disponíveis
+## 🚀 Comandos Principais
 
+### **Versão Web:**
 ```bash
-npm start          # Executar aplicação
-npm run dev        # Modo desenvolvimento
-npm run build      # Gerar arquivos dist
-npm run build-exe  # Gerar executáveis
-npm test           # Testar aplicação
+npm install          # Instalar dependências
+npm start            # Executar aplicação
+npm run build        # Preparar distribuição
+npm run build-exe    # Gerar executáveis
 ```
 
-## 📊 Comparação com Versão Anterior
+### **Versão Desktop:**
+```bash
+cd standalone
+npm install          # Instalar dependências
+npm start            # Testar aplicação
+npm run build-win    # Gerar para Windows
+node build.js        # Gerar para todas as plataformas
+```
 
-| Aspecto | Versão Anterior | Versão Arrumada |
-|---------|----------------|-----------------|
-| **Frontend** | React + Vite | HTML + CSS + JS |
-| **Build** | Electron | PKG |
-| **Dependências** | Muitas | Mínimas |
-| **Tamanho** | ~150MB | ~50MB |
-| **Confiabilidade** | Problemas | ✅ Estável |
-| **Manutenção** | Complexa | ✅ Simples |
+## 📋 Requisitos
 
-## 🎯 Próximos Passos
+### **Para Desenvolvimento (Versão Web):**
+- Node.js 18+
+- NPM ou Yarn
+- PostgreSQL (opcional)
 
-1. **Teste a aplicação** localmente
-2. **Gere o executável** para Windows
-3. **Distribua para o redator**
-4. **Colete feedback** de uso
-5. **Ajuste conforme necessário**
+### **Para o Redator (Versão Desktop):**
+- ❌ **Nenhum requisito!**
+- Arquivo executável único
+- Funciona em qualquer Windows/Mac/Linux
+
+## 🎯 Recomendação Final
+
+### **Para Você (Desenvolvedor):**
+1. **Use a versão web** para desenvolvimento e testes
+2. **Gere a versão desktop** para o redator
+3. **Distribua o arquivo único** EditorArtigos-Portable.exe
+4. **Redator usa sem complicações**
+
+### **Para o Redator:**
+1. **Baixa** o arquivo executável
+2. **Executa** com duplo clique
+3. **Usa** a interface familiar
+4. **Cria artigos** profissionalmente
 
 ---
 
-**Versão Arrumada - Simples, Confiável e Funcional!**
+## 🎊 Resultado Final
 
-*Criado para o Blog Liberdade Médica - Sistema de criação de artigos profissional*
+**✅ DUAS VERSÕES COMPLETAS:**
+
+1. **🌐 Versão Web** - Para desenvolvedores com Node.js
+2. **💻 Versão Desktop** - Para redatores sem conhecimento técnico
+
+**✅ MESMO SISTEMA, DUAS FORMAS DE USO:**
+
+- **Funcionalidades idênticas**
+- **Interface igual**
+- **Dados compatíveis**
+- **Escolha baseada no usuário**
+
+**🎯 Agora você tem a solução perfeita para qualquer cenário!**
+
+*Criado para o Blog Liberdade Médica - Sistema profissional de criação de artigos*

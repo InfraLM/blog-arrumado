@@ -1,7 +1,7 @@
 {
   "name": "editor-artigos-standalone",
-  "version": "1.0.0",
-  "description": "Editor de Artigos - Aplicativo Desktop Standalone",
+  "version": "1.0.1",
+  "description": "Editor de Artigos - Aplicativo Desktop com PostgreSQL",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -66,10 +66,14 @@
     "editor",
     "artigos",
     "medicina",
-    "desktop"
+    "desktop",
+    "postgresql"
   ],
   "author": "Liberdade Médica",
   "license": "MIT",
+  "dependencies": {
+    "pg": "^8.11.3"
+  },
   "devDependencies": {
     "electron": "^27.0.0",
     "electron-builder": "^24.6.4"

@@ -69,13 +69,65 @@ class EditorArtigosDesktop {
             const result = await ipcRenderer.invoke('test-connection');
             
             if (result.success) {
-                this.setStatus(result.message, 'success');
+                this.setStatus(result.message, result.mode === 'postgresql' ? 'success' : 'warning');
+                this.updateConnectionIndicator(result.mode, result.message);
             } else {
                 this.setStatus('❌ Erro na aplicação', 'error');
+                this.updateConnectionIndicator('error', 'Erro na aplicação');
             }
         } catch (error) {
             this.setStatus('❌ Erro de comunicação', 'error');
+            this.updateConnectionIndicator('error', 'Erro de comunicação');
             console.error('Erro ao verificar health:', error);
+        }
+    }
+
+    // Atualizar indicador de conexão
+    updateConnectionIndicator(mode, message) {
+        // Criar indicador se não existir
+        let indicator = document.getElementById('connectionIndicator');
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = 'connectionIndicator';
+            indicator.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 10px 15px;
+                border-radius: 25px;
+                font-size: 12px;
+                font-weight: bold;
+                color: white;
+                z-index: 10000;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                transition: all 0.3s ease;
+                cursor: pointer;
+            `;
+            document.body.appendChild(indicator);
+        }
+
+        // Atualizar conteúdo e estilo baseado no modo
+        switch (mode) {
+            case 'postgresql':
+                indicator.style.background = 'linear-gradient(45deg, #28a745, #20c997)';
+                indicator.textContent = '🔗 PostgreSQL Online';
+                indicator.title = message + '\n\nArtigos salvos no banco de dados do blog.';
+                break;
+            case 'local':
+                indicator.style.background = 'linear-gradient(45deg, #ffc107, #fd7e14)';
+                indicator.style.color = '#000';
+                indicator.textContent = '📁 Modo Offline';
+                indicator.title = message + '\n\nArtigos salvos localmente no computador.';
+                break;
+            case 'error':
+                indicator.style.background = 'linear-gradient(45deg, #dc3545, #c82333)';
+                indicator.textContent = '❌ Erro';
+                indicator.title = message;
+                break;
+            default:
+                indicator.style.background = '#6c757d';
+                indicator.textContent = '❓ Verificando...';
+                indicator.title = 'Verificando status da conexão...';
         }
     }
 
