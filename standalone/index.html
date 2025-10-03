@@ -7,12 +7,19 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Indicador de Status da API -->
+    <div id="connectionStatus" class="status-indicator">
+        🔄 Iniciando servidor...
+    </div>
+
     <div class="container">
         <!-- Header -->
         <header class="header">
-            <h1>Editor de Artigos</h1>
+            <h1>📝 Editor de Artigos</h1>
             <p>Sistema de criação de conteúdo para o blog Liberdade Médica</p>
-            <div class="status" id="status">Carregando...</div>
+            <div id="appStatus" class="app-status">
+                🔄 Conectando ao servidor backend...
+            </div>
         </header>
 
         <!-- Formulário Principal -->
@@ -144,6 +151,6 @@
     </div>
 
     <!-- Scripts -->
-    <script src="app.js"></script>
+    <script src="app-web.js"></script>
 </body>
 </html>
