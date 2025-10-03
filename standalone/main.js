@@ -4,6 +4,9 @@ const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const { Client } = require('pg');
+const AWS = require('aws-sdk');
+const multer = require('multer');
+const crypto = require('crypto');
 
 // Variáveis globais
 let mainWindow;
@@ -26,6 +29,40 @@ const dbConfig = {
   statement_timeout: 30000,
   idle_in_transaction_session_timeout: 30000
 };
+
+// Configuração do Backblaze B2
+const b2Config = {
+  accessKeyId: '005130cedd268650000000004',
+  secretAccessKey: 'K005h8RBjbhsVX5NieckVPQ0ZKGHSAc',
+  endpoint: 'https://s3.us-east-005.backblazeb2.com',
+  region: 'us-east-005',
+  bucket: 'imagensblog'
+};
+
+// Configurar AWS SDK para Backblaze B2
+const s3 = new AWS.S3({
+  accessKeyId: b2Config.accessKeyId,
+  secretAccessKey: b2Config.secretAccessKey,
+  endpoint: b2Config.endpoint,
+  region: b2Config.region,
+  s3ForcePathStyle: true
+});
+
+// Configurar multer para upload de arquivos
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    // Aceitar apenas imagens
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Apenas arquivos de imagem são permitidos'), false);
+    }
+  }
+});
 
 // Inicializar servidor Express
 async function initServer() {
@@ -132,6 +169,42 @@ async function initPostgreSQL() {
   }
 }
 
+// Função para fazer upload de imagem para Backblaze B2
+async function uploadImageToB2(file, filename) {
+  try {
+    const fileExtension = path.extname(file.originalname);
+    const uniqueFilename = filename || `${crypto.randomUUID()}${fileExtension}`;
+    
+    const uploadParams = {
+      Bucket: b2Config.bucket,
+      Key: uniqueFilename,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+      ACL: 'public-read'
+    };
+
+    console.log('🔄 Fazendo upload para Backblaze B2:', uniqueFilename);
+    
+    const result = await s3.upload(uploadParams).promise();
+    
+    // Construir URL pública
+    const publicUrl = `https://${b2Config.bucket}.s3.us-east-005.backblazeb2.com/${uniqueFilename}`;
+    
+    console.log('✅ Upload concluído:', publicUrl);
+    
+    return {
+      success: true,
+      url: publicUrl,
+      key: uniqueFilename,
+      size: file.size,
+      mimetype: file.mimetype
+    };
+  } catch (error) {
+    console.error('❌ Erro no upload para B2:', error);
+    throw error;
+  }
+}
+
 // Configurar rotas da API
 function setupRoutes() {
   // Rota de teste de conexão
@@ -170,6 +243,40 @@ function setupRoutes() {
     }
   });
 
+  // Upload de imagem
+  serverApp.post('/api/upload-image', upload.single('image'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'Nenhuma imagem foi enviada'
+        });
+      }
+
+      console.log('📷 Nova requisição de upload de imagem:', {
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size
+      });
+
+      // Fazer upload para Backblaze B2
+      const uploadResult = await uploadImageToB2(req.file);
+
+      res.json({
+        success: true,
+        message: '✅ Imagem enviada com sucesso!',
+        image: uploadResult
+      });
+
+    } catch (error) {
+      console.error('❌ Erro no upload de imagem:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro ao fazer upload da imagem: ' + error.message
+      });
+    }
+  });
+
   // Listar artigos
   serverApp.get('/api/articles', async (req, res) => {
     try {
@@ -182,7 +289,8 @@ function setupRoutes() {
       }
 
       const result = await pgClient.query(`
-        SELECT id, titulo, categoria, autor, data_criacao, status, slug, created_at
+        SELECT id, titulo, categoria, autor, coautor, resumo, destaque, 
+               imagem_principal, data_criacao, status, slug, created_at
         FROM public.blog_artigos 
         ORDER BY created_at DESC 
         LIMIT 20
@@ -193,6 +301,10 @@ function setupRoutes() {
         titulo: row.titulo,
         categoria: row.categoria,
         autor: row.autor,
+        coautor: row.coautor,
+        resumo: row.resumo,
+        destaque: row.destaque,
+        imagem_principal: row.imagem_principal,
         data_criacao: row.data_criacao,
         status: row.status,
         slug: row.slug,
@@ -218,12 +330,16 @@ function setupRoutes() {
   // Criar artigo
   serverApp.post('/api/articles', async (req, res) => {
     try {
-      const { titulo, categoria, autor, content } = req.body;
+      const { titulo, categoria, autor, coautor, resumo, destaque, imagem_principal, content } = req.body;
 
       console.log('📝 Nova requisição de criação de artigo:', {
         titulo: titulo ? titulo.substring(0, 50) + '...' : 'N/A',
         categoria: categoria || 'N/A',
         autor: autor || 'N/A',
+        coautor: coautor || 'N/A',
+        resumo: resumo ? resumo.substring(0, 50) + '...' : 'N/A',
+        destaque: destaque || false,
+        imagem_principal: imagem_principal ? 'Sim' : 'Não',
         content_length: content ? content.length : 0
       });
 
@@ -237,6 +353,8 @@ function setupRoutes() {
       if (titulo && titulo.length > 255) errors.push('Título muito longo (máximo 255 caracteres)');
       if (categoria && categoria.length > 100) errors.push('Categoria muito longa (máximo 100 caracteres)');
       if (autor && autor.length > 100) errors.push('Nome do autor muito longo (máximo 100 caracteres)');
+      if (coautor && coautor.length > 100) errors.push('Nome do co-autor muito longo (máximo 100 caracteres)');
+      if (resumo && resumo.length > 500) errors.push('Resumo muito longo (máximo 500 caracteres)');
 
       if (errors.length > 0) {
         console.log('❌ Validação falhou:', errors);
@@ -274,14 +392,18 @@ function setupRoutes() {
         titulo: titulo.trim(),
         slug: finalSlug,
         categoria: categoria.trim(),
-        autor: autor.trim()
+        autor: autor.trim(),
+        coautor: coautor ? coautor.trim() : null,
+        destaque: destaque || false,
+        imagem_principal: imagem_principal || null
       });
 
       const insertQuery = `
         INSERT INTO public.blog_artigos 
-        (titulo, slug, categoria, autor, data_criacao, data_atualizacao, content, status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING id, slug, titulo, categoria, autor, created_at
+        (titulo, slug, categoria, autor, coautor, resumo, destaque, imagem_principal, 
+         data_criacao, data_atualizacao, content, status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        RETURNING id, slug, titulo, categoria, autor, coautor, resumo, destaque, imagem_principal, created_at
       `;
 
       const values = [
@@ -289,6 +411,10 @@ function setupRoutes() {
         finalSlug,
         categoria.trim(),
         autor.trim(),
+        coautor ? coautor.trim() : null,
+        resumo ? resumo.trim() : null,
+        destaque || false,
+        imagem_principal || null,
         now.toISOString().split('T')[0], // data_criacao
         now.toISOString().split('T')[0], // data_atualizacao
         content.trim(),
@@ -306,6 +432,9 @@ function setupRoutes() {
         titulo: insertedArticle.titulo,
         categoria: insertedArticle.categoria,
         autor: insertedArticle.autor,
+        coautor: insertedArticle.coautor,
+        destaque: insertedArticle.destaque,
+        imagem_principal: insertedArticle.imagem_principal,
         created_at: insertedArticle.created_at
       });
 
@@ -321,6 +450,10 @@ function setupRoutes() {
           titulo: insertedArticle.titulo,
           categoria: insertedArticle.categoria,
           autor: insertedArticle.autor,
+          coautor: insertedArticle.coautor,
+          resumo: insertedArticle.resumo,
+          destaque: insertedArticle.destaque,
+          imagem_principal: insertedArticle.imagem_principal,
           slug: insertedArticle.slug
         }
       });

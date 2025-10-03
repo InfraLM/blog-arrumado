@@ -33,6 +33,10 @@ class EditorArtigosDesktop {
         this.tituloInput = document.getElementById('titulo');
         this.categoriaSelect = document.getElementById('categoria');
         this.autorInput = document.getElementById('autor');
+        this.coautorInput = document.getElementById('coautor');
+        this.resumoTextarea = document.getElementById('resumo');
+        this.destaqueSelect = document.getElementById('destaque');
+        this.imagemPrincipalInput = document.getElementById('imagemPrincipal');
         this.conteudoTextarea = document.getElementById('conteudo');
         this.tipoSelect = document.getElementById('tipo');
         
@@ -42,6 +46,23 @@ class EditorArtigosDesktop {
         this.previewDiv = document.getElementById('preview');
         this.articlesListDiv = document.getElementById('articlesList');
         
+        // Elementos de upload
+        this.uploadArea = document.getElementById('uploadArea');
+        this.imagemPreview = document.getElementById('imagemPreview');
+        this.imagemPreviewImg = document.getElementById('imagemPreviewImg');
+        this.removeImageBtn = document.getElementById('removeImage');
+        this.imagemUrl = document.getElementById('imagemUrl');
+        this.resumoCount = document.getElementById('resumoCount');
+        
+        // Elementos de upload de bloco
+        this.blockImageUpload = document.getElementById('blockImageUpload');
+        this.blockUploadArea = document.getElementById('blockUploadArea');
+        this.blockImageInput = document.getElementById('blockImage');
+        this.blockImagePreview = document.getElementById('blockImagePreview');
+        this.blockImagePreviewImg = document.getElementById('blockImagePreviewImg');
+        this.removeBlockImageBtn = document.getElementById('removeBlockImage');
+        this.blockImageUrl = document.getElementById('blockImageUrl');
+        
         // Botões
         this.addBlockBtn = document.getElementById('addBlock');
         this.saveDraftBtn = document.getElementById('saveDraft');
@@ -49,6 +70,10 @@ class EditorArtigosDesktop {
         this.exportHtmlBtn = document.getElementById('exportHtml');
         this.clearFormBtn = document.getElementById('clearForm');
         this.publishBtn = document.getElementById('publishArticle');
+        
+        // Variáveis de estado
+        this.imagemPrincipalUrl = null;
+        this.currentBlockImageUrl = null;
     }
 
     bindEvents() {
@@ -64,6 +89,29 @@ class EditorArtigosDesktop {
         this.tituloInput.addEventListener('input', () => this.updatePreview());
         this.categoriaSelect.addEventListener('change', () => this.updatePreview());
         this.autorInput.addEventListener('input', () => this.updatePreview());
+        this.coautorInput.addEventListener('input', () => this.updatePreview());
+        this.resumoTextarea.addEventListener('input', () => {
+            this.updateCharCount();
+            this.updatePreview();
+        });
+        this.destaqueSelect.addEventListener('change', () => this.updatePreview());
+        
+        // Eventos de upload de imagem principal
+        this.uploadArea.addEventListener('click', () => this.imagemPrincipalInput.click());
+        this.uploadArea.addEventListener('dragover', (e) => this.handleDragOver(e));
+        this.uploadArea.addEventListener('drop', (e) => this.handleDrop(e, 'principal'));
+        this.imagemPrincipalInput.addEventListener('change', (e) => this.handleImageSelect(e, 'principal'));
+        this.removeImageBtn.addEventListener('click', () => this.removeImage('principal'));
+        
+        // Eventos de upload de imagem de bloco
+        this.blockUploadArea.addEventListener('click', () => this.blockImageInput.click());
+        this.blockUploadArea.addEventListener('dragover', (e) => this.handleDragOver(e));
+        this.blockUploadArea.addEventListener('drop', (e) => this.handleDrop(e, 'block'));
+        this.blockImageInput.addEventListener('change', (e) => this.handleImageSelect(e, 'block'));
+        this.removeBlockImageBtn.addEventListener('click', () => this.removeImage('block'));
+        
+        // Evento para mostrar/ocultar upload de imagem de bloco
+        this.tipoSelect.addEventListener('change', () => this.toggleBlockImageUpload());
         
         // Atalho Ctrl+Enter para adicionar bloco
         this.conteudoTextarea.addEventListener('keydown', (e) => {
@@ -216,59 +264,236 @@ class EditorArtigosDesktop {
     }
 
     // Adicionar bloco de conteúdo
+    // Atualizar contador de caracteres do resumo
+    updateCharCount() {
+        const count = this.resumoTextarea.value.length;
+        this.resumoCount.textContent = count;
+        
+        // Adicionar classes de aviso
+        this.resumoCount.parentElement.classList.remove('warning', 'error');
+        if (count > 400) {
+            this.resumoCount.parentElement.classList.add('warning');
+        }
+        if (count > 500) {
+            this.resumoCount.parentElement.classList.add('error');
+        }
+    }
+
+    // Mostrar/ocultar upload de imagem de bloco
+    toggleBlockImageUpload() {
+        const isImage = this.tipoSelect.value === 'image';
+        this.blockImageUpload.style.display = isImage ? 'block' : 'none';
+        this.conteudoTextarea.style.display = isImage ? 'none' : 'block';
+        
+        if (isImage) {
+            this.conteudoTextarea.value = '';
+        } else {
+            this.removeImage('block');
+        }
+    }
+
+    // Manipular drag over
+    handleDragOver(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.currentTarget.classList.add('dragover');
+    }
+
+    // Manipular drop
+    handleDrop(e, type) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.currentTarget.classList.remove('dragover');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            this.uploadImage(files[0], type);
+        }
+    }
+
+    // Manipular seleção de arquivo
+    handleImageSelect(e, type) {
+        const file = e.target.files[0];
+        if (file) {
+            this.uploadImage(file, type);
+        }
+    }
+
+    // Upload de imagem
+    async uploadImage(file, type) {
+        // Validar arquivo
+        if (!file.type.startsWith('image/')) {
+            this.showStatus('❌ Apenas arquivos de imagem são permitidos', 'error');
+            return;
+        }
+        
+        if (file.size > 10 * 1024 * 1024) {
+            this.showStatus('❌ Arquivo muito grande. Máximo 10MB', 'error');
+            return;
+        }
+        
+        const uploadArea = type === 'principal' ? this.uploadArea : this.blockUploadArea;
+        const preview = type === 'principal' ? this.imagemPreview : this.blockImagePreview;
+        const previewImg = type === 'principal' ? this.imagemPreviewImg : this.blockImagePreviewImg;
+        const urlSpan = type === 'principal' ? this.imagemUrl : this.blockImageUrl;
+        
+        try {
+            // Mostrar loading
+            uploadArea.classList.add('upload-loading');
+            this.showStatus('📤 Fazendo upload da imagem...', 'info');
+            
+            // Criar FormData
+            const formData = new FormData();
+            formData.append('image', file);
+            
+            // Fazer upload
+            const response = await fetch(`${this.apiUrl}/upload-image`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                // Mostrar preview
+                previewImg.src = result.image.url;
+                urlSpan.textContent = result.image.url;
+                preview.style.display = 'block';
+                
+                // Salvar URL
+                if (type === 'principal') {
+                    this.imagemPrincipalUrl = result.image.url;
+                } else {
+                    this.currentBlockImageUrl = result.image.url;
+                }
+                
+                this.showStatus('✅ Imagem enviada com sucesso!', 'success');
+                this.updatePreview();
+            } else {
+                throw new Error(result.message || 'Erro no upload');
+            }
+        } catch (error) {
+            console.error('Erro no upload:', error);
+            this.showStatus(`❌ Erro no upload: ${error.message}`, 'error');
+        } finally {
+            uploadArea.classList.remove('upload-loading');
+        }
+    }
+
+    // Remover imagem
+    removeImage(type) {
+        if (type === 'principal') {
+            this.imagemPrincipalUrl = null;
+            this.imagemPreview.style.display = 'none';
+            this.imagemPrincipalInput.value = '';
+        } else {
+            this.currentBlockImageUrl = null;
+            this.blockImagePreview.style.display = 'none';
+            this.blockImageInput.value = '';
+        }
+        this.updatePreview();
+    }
+
     addBlock() {
         const tipo = this.tipoSelect.value;
         const conteudo = this.conteudoTextarea.value.trim();
-
-        if (!conteudo) {
-            this.setStatus('❌ Digite o conteúdo antes de adicionar o bloco', 'error');
-            this.conteudoTextarea.focus();
-            return;
-        }
-
-        const bloco = {
-            id: Date.now(),
-            tipo: tipo,
-            conteudo: conteudo
-        };
-
-        this.blocos.push(bloco);
-        this.conteudoTextarea.value = '';
-        this.conteudoTextarea.focus();
         
-        this.updateBlocksList();
-        this.updatePreview();
-        this.setStatus(`✅ Bloco ${tipo.toUpperCase()} adicionado`, 'success');
+        if (tipo === 'image') {
+            if (!this.currentBlockImageUrl) {
+                this.showStatus('❌ Selecione uma imagem para o bloco', 'error');
+                return;
+            }
+            
+            // Criar bloco de imagem
+            const block = {
+                type: 'image',
+                content: this.currentBlockImageUrl,
+                alt: 'Imagem do artigo'
+            };
+            
+            this.blocks.push(block);
+            this.renderBlocks();
+            this.updatePreview();
+            
+            // Limpar
+            this.removeImage('block');
+            this.toggleBlockImageUpload();
+            
+        } else {
+            if (!conteudo) {
+                this.showStatus('❌ Digite o conteúdo do bloco', 'error');
+                return;
+            }
+            
+            // Criar bloco de texto
+            const block = {
+                type: tipo,
+                content: conteudo
+            };
+            
+            this.blocks.push(block);
+            this.renderBlocks();
+            this.updatePreview();
+            
+            // Limpar
+            this.conteudoTextarea.value = '';
+        }
+        
+        this.showStatus('✅ Bloco adicionado com sucesso!', 'success');
     }
 
     // Atualizar lista de blocos
     updateBlocksList() {
-        if (this.blocos.length === 0) {
+        if (this.blocks.length === 0) {
             this.blocksListDiv.innerHTML = '<p class="text-gray-500">Nenhum bloco adicionado</p>';
             return;
         }
 
-        const blocksHtml = this.blocos.map((bloco, index) => `
-            <div class="block-item bg-white p-3 rounded border border-gray-200 mb-2">
-                <div class="flex justify-between items-start mb-2">
-                    <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm font-medium">
-                        ${bloco.tipo.toUpperCase()}
-                    </span>
-                    <div class="flex gap-2">
-                        <button onclick="editor.moveBlock(${index}, -1)" class="text-blue-600 hover:text-blue-800 text-sm" ${index === 0 ? 'disabled' : ''}>↑</button>
-                        <button onclick="editor.moveBlock(${index}, 1)" class="text-blue-600 hover:text-blue-800 text-sm" ${index === this.blocos.length - 1 ? 'disabled' : ''}>↓</button>
-                        <button onclick="editor.editBlock(${index})" class="text-green-600 hover:text-green-800 text-sm">✏️</button>
-                        <button onclick="editor.removeBlock(${index})" class="text-red-600 hover:text-red-800 text-sm">🗑️</button>
+        const blocksHtml = this.blocks.map((block, index) => {
+            if (block.type === 'image') {
+                return `
+                    <div class="block-item image-block bg-white p-3 rounded border border-gray-200 mb-2">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm font-medium">
+                                IMAGEM
+                            </span>
+                            <div class="flex gap-2">
+                                <button onclick="app.moveBlock(${index}, -1)" class="text-blue-600 hover:text-blue-800 text-sm" ${index === 0 ? 'disabled' : ''}>↑</button>
+                                <button onclick="app.moveBlock(${index}, 1)" class="text-blue-600 hover:text-blue-800 text-sm" ${index === this.blocks.length - 1 ? 'disabled' : ''}>↓</button>
+                                <button onclick="app.removeBlock(${index})" class="text-red-600 hover:text-red-800 text-sm">🗑️</button>
+                            </div>
+                        </div>
+                        <div class="block-content">
+                            <img class="block-image" src="${block.content}" alt="${block.alt || 'Imagem do artigo'}" style="width: 80px; height: 60px; object-fit: cover; border-radius: 4px; border: 1px solid #e2e8f0;">
+                            <div class="block-text" style="font-size: 0.875rem; color: #4a5568; margin-top: 0.5rem;">
+                                Imagem: ${block.content.split('/').pop()}
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div class="text-sm text-gray-700 bg-gray-50 p-2 rounded">
-                    ${this.escapeHtml(bloco.conteudo.substring(0, 100))}${bloco.conteudo.length > 100 ? '...' : ''}
-                </div>
-            </div>
-        `).join('');
+                `;
+            } else {
+                return `
+                    <div class="block-item bg-white p-3 rounded border border-gray-200 mb-2">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm font-medium">
+                                ${block.type.toUpperCase()}
+                            </span>
+                            <div class="flex gap-2">
+                                <button onclick="app.moveBlock(${index}, -1)" class="text-blue-600 hover:text-blue-800 text-sm" ${index === 0 ? 'disabled' : ''}>↑</button>
+                                <button onclick="app.moveBlock(${index}, 1)" class="text-blue-600 hover:text-blue-800 text-sm" ${index === this.blocks.length - 1 ? 'disabled' : ''}>↓</button>
+                                <button onclick="app.removeBlock(${index})" class="text-red-600 hover:text-red-800 text-sm">🗑️</button>
+                            </div>
+                        </div>
+                        <div class="text-sm text-gray-700 bg-gray-50 p-2 rounded">
+                            ${this.escapeHtml(block.content.substring(0, 100))}${block.content.length > 100 ? '...' : ''}
+                        </div>
+                    </div>
+                `;
+            }
+        }).join('');
 
         this.blocksListDiv.innerHTML = `
-            <h3 class="text-lg font-semibold mb-3 text-gray-800">Blocos do Artigo (${this.blocos.length})</h3>
+            <h3 class="text-lg font-semibold mb-3 text-gray-800">Blocos do Artigo (${this.blocks.length})</h3>
             ${blocksHtml}
         `;
     }
@@ -401,32 +626,57 @@ class EditorArtigosDesktop {
 
         // Gerar HTML do conteúdo
         let contentHtml = '';
-        this.blocos.forEach(bloco => {
-            const conteudo = bloco.conteudo;
+        
+        // Adicionar imagem principal se existir
+        if (this.imagemPrincipalUrl) {
+            contentHtml += `<div class="imagem-principal">
+                <img src="${this.imagemPrincipalUrl}" alt="${titulo}" style="width: 100%; height: auto; margin-bottom: 1rem;">
+            </div>\n\n`;
+        }
+        
+        // Adicionar resumo se existir
+        if (this.resumoTextarea && this.resumoTextarea.value.trim()) {
+            contentHtml += `<div class="resumo">
+                <p><strong>Resumo:</strong> ${this.resumoTextarea.value.trim()}</p>
+            </div>\n\n`;
+        }
+        
+        // Processar blocos (usar this.blocks se existir, senão this.blocos)
+        const blocksToProcess = this.blocks || this.blocos || [];
+        blocksToProcess.forEach(block => {
+            // Compatibilidade com formato antigo e novo
+            const tipo = block.type || block.tipo;
+            const conteudo = block.content || block.conteudo;
             
-            switch (bloco.tipo) {
-                case 'h1':
-                    contentHtml += `<h1>${conteudo}</h1>\n`;
-                    break;
-                case 'h2':
-                    contentHtml += `<h2>${conteudo}</h2>\n`;
-                    break;
-                case 'h3':
-                    contentHtml += `<h3>${conteudo}</h3>\n`;
-                    break;
-                case 'h4':
-                    contentHtml += `<h4>${conteudo}</h4>\n`;
-                    break;
-                case 'h5':
-                    contentHtml += `<h5>${conteudo}</h5>\n`;
-                    break;
-                case 'h6':
-                    contentHtml += `<h6>${conteudo}</h6>\n`;
-                    break;
-                case 'p':
-                default:
-                    contentHtml += `<p>${conteudo.replace(/\n/g, '<br>')}</p>\n`;
-                    break;
+            if (tipo === 'image') {
+                contentHtml += `<div class="imagem-bloco">
+                    <img src="${conteudo}" alt="${block.alt || 'Imagem do artigo'}" style="width: 100%; height: auto; margin: 1rem 0;">
+                </div>\n\n`;
+            } else {
+                switch (tipo) {
+                    case 'h1':
+                        contentHtml += `<h1>${conteudo}</h1>\n`;
+                        break;
+                    case 'h2':
+                        contentHtml += `<h2>${conteudo}</h2>\n`;
+                        break;
+                    case 'h3':
+                        contentHtml += `<h3>${conteudo}</h3>\n`;
+                        break;
+                    case 'h4':
+                        contentHtml += `<h4>${conteudo}</h4>\n`;
+                        break;
+                    case 'h5':
+                        contentHtml += `<h5>${conteudo}</h5>\n`;
+                        break;
+                    case 'h6':
+                        contentHtml += `<h6>${conteudo}</h6>\n`;
+                        break;
+                    case 'p':
+                    default:
+                        contentHtml += `<p>${conteudo.replace(/\n/g, '<br>')}</p>\n`;
+                        break;
+                }
             }
         });
 
@@ -435,6 +685,10 @@ class EditorArtigosDesktop {
             titulo: titulo,
             categoria: categoria,
             autor: autor,
+            coautor: this.coautorInput ? this.coautorInput.value.trim() : '',
+            resumo: this.resumoTextarea ? this.resumoTextarea.value.trim() : '',
+            destaque: this.destaqueSelect ? this.destaqueSelect.value === 'true' : false,
+            imagem_principal: this.imagemPrincipalUrl || null,
             content: contentHtml
         };
 
