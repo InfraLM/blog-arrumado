@@ -1,0 +1,81 @@
+{
+  "name": "editor-artigos-standalone",
+  "version": "1.0.0",
+  "description": "Editor de Artigos - Aplicativo Desktop Standalone",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win",
+    "build-mac": "electron-builder --mac", 
+    "build-linux": "electron-builder --linux",
+    "build-all": "electron-builder --win --mac --linux",
+    "dist": "npm run build-all"
+  },
+  "build": {
+    "appId": "com.liberdademedica.editor-artigos",
+    "productName": "Editor de Artigos - Blog Liberdade Médica",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/**/*",
+      "node_modules/sqlite3/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        },
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "portable": {
+      "artifactName": "EditorArtigos-Portable.exe"
+    }
+  },
+  "keywords": [
+    "blog",
+    "editor",
+    "artigos",
+    "medicina",
+    "desktop"
+  ],
+  "author": "Liberdade Médica",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4"
+  },
+  "dependencies": {
+    "sqlite3": "^5.1.6"
+  }
+}
