@@ -20,7 +20,17 @@
     },
     "files": [
       "**/*",
-      "!node_modules/**/*"
+      "!node_modules/**/*",
+      "!dist/**/*",
+      "!*.md",
+      "!test-*.js",
+      "!build-*.bat"
+    ],
+    "extraResources": [
+      {
+        "from": "README-FINAL.md",
+        "to": "README.md"
+      }
     ],
     "win": {
       "target": [
@@ -29,11 +39,17 @@
           "arch": ["x64"]
         },
         {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
           "target": "zip",
           "arch": ["x64"]
         }
       ],
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.png",
+      "requestedExecutionLevel": "asInvoker",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "mac": {
       "target": [
@@ -42,7 +58,7 @@
           "arch": ["x64", "arm64"]
         }
       ],
-      "icon": "assets/icon.icns"
+      "icon": "assets/icon.png"
     },
     "linux": {
       "target": [
@@ -58,7 +74,14 @@
       "icon": "assets/icon.png"
     },
     "portable": {
-      "artifactName": "EditorArtigos-Servidor.exe"
+      "artifactName": "EditorArtigos-Servidor-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "EditorArtigos-Installer-${version}.exe",
+      "shortcutName": "Editor de Artigos",
+      "uninstallDisplayName": "Editor de Artigos - Blog Liberdade Médica"
     }
   },
   "keywords": [
